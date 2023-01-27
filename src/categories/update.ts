@@ -12,56 +12,29 @@ type ModifiedField = {
     slug: string
 }
 
-export default function (Categories) {
-    async function update(modified: {[key: number]: ModifiedField}) {
-        const cids: string[] = Object.keys(modified);
-        await Promise.all(cids.map(cid => updateCategory(cid, modified[cid])));
-        return cids;
-    }
+type existFn = (cid: string) => Promise<boolean>;
+type parseFn = (cid: string, description: string) => Promise<void>;
+type setFieldFn = (cid: string, parsed: string, description: string) => Promise<void>;
+type getCidsFn = (cid: string) => Promise<string[]>;
+type getFieldsFn = (cid: string, fields: string[]) => Promise<{[key: string]: string}>;
+type getFieldFn = (cid: string, field: string) => Promise<string>;
+type updateFn = (modified: {[key: string]: ModifiedField}) => Promise<string[]>;
 
-    async function updateCategory(cid: string, modifiedFields: ModifiedField) {
-        const exists: boolean = await Categories.exists(cid);
-        if (!exists) {
-            return;
-        }
+type CategoryType = {
+    exists: existFn,
+    parseDescription: parseFn,
+    setCategoryField: setFieldFn,
+    getChildrenCids: getCidsFn,
+    getCategoryFields: getFieldsFn,
+    getCategoryField: getFieldFn,
+    update: updateFn
+}
 
-        if (modifiedFields.hasOwnProperty('name')) {
-            const translated: string | void | number = await translator.translate(modifiedFields.name);
-            modifiedFields.slug = `${cid}/${slugify(translated)}`;
-        }
-        const result: {cid, category} = await plugins.hooks.fire('filter:category.update', { cid: cid, category: modifiedFields });
-
-        const { category } = result;
-        const fields: string[] = Object.keys(category);
-        // move parent to front, so its updated first
-        const parentCidIndex: number = fields.indexOf('parentCid');
-        if (parentCidIndex !== -1 && fields.length > 1) {
-            fields.splice(0, 0, fields.splice(parentCidIndex, 1)[0]);
-        }
-
-        for (const key of fields) {
-            // eslint-disable-next-line no-await-in-loop
-            await updateCategoryField(cid, key, category[key]);
-        }
-        plugins.hooks.fire('action:category.update', { cid: cid, modified: category });
-    }
-
-    async function updateCategoryField(cid: string, key: string, value: string) {
-        if (key === 'parentCid') {
-            return await updateParent(cid, value);
-        } else if (key === 'tagWhitelist') {
-            return await updateTagWhitelist(cid, value);
-        } else if (key === 'name') {
-            return await updateName(cid, value);
-        } else if (key === 'order') {
-            return await updateOrder(cid, value);
-        }
-
-        await db.setObjectField(`category:${cid}`, key, value);
-        if (key === 'description') {
-            await Categories.parseDescription(cid, value);
-        }
-    }
+export = function (Categories: CategoryType) {
+    Categories.parseDescription = async function (cid: string, description: string) {
+        const parsedDescription: string = await plugins.hooks.fire('filter:parse.raw', description) as string;
+        await Categories.setCategoryField(cid, 'descriptionParsed', parsedDescription);
+    };
 
     async function updateParent(cid: string, newParent: string) {
         const parent: number = parseInt(newParent, 10) || 0;
@@ -78,9 +51,15 @@ export default function (Categories) {
             return;
         }
         await Promise.all([
-            db.sortedSetRemove(`cid:${oldParent}:children`, cid),
-            db.sortedSetAdd(`cid:${newParent}:children`, categoryData.order, cid),
-            db.setObjectField(`category:${cid}`, 'parentCid', newParent),
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            db.sortedSetRemove(`cid:${oldParent}:children`, cid) as void,
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            db.sortedSetAdd(`cid:${newParent}:children`, categoryData.order, cid) as void,
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            db.setObjectField(`category:${cid}`, 'parentCid', newParent) as void,
         ]);
 
         cache.del([
@@ -92,21 +71,30 @@ export default function (Categories) {
     }
 
     async function updateTagWhitelist(cid: string, tags: string) {
-        const newTags: string[] = tags.split(',').map(tag => utils.cleanUpTag(tag, meta.config.maximumTagLength))
-            .filter(Boolean);
-        await db.delete(`cid:${cid}:tag:whitelist`);
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        const newTags: string[] = tags.split(',').map(tag => (utils.cleanUpTag(tag, meta.config.maximumTagLength) as string)).filter(Boolean);
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await db.delete(`cid:${cid}:tag:whitelist`) as void;
         const scores: number[] = newTags.map((tag, index) => index);
-        await db.sortedSetAdd(`cid:${cid}:tag:whitelist`, scores, tags);
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await db.sortedSetAdd(`cid:${cid}:tag:whitelist`, scores, newTags) as void;
         cache.del(`cid:${cid}:tag:whitelist`);
     }
 
-    async function updateOrder(cid: string, order) {
+    async function updateOrder(cid: string, order: string) {
         const parentCid = await Categories.getCategoryField(cid, 'parentCid');
-        await db.sortedSetsAdd('categories:cid', order, cid);
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await db.sortedSetsAdd('categories:cid', order, cid) as void;
 
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         const childrenCids: number[] = await db.getSortedSetRange(
             `cid:${parentCid}:children`, 0, -1
-        );
+        ) as number[];
 
         const currentIndex: number = childrenCids.indexOf(Number(cid));
         if (currentIndex === -1) {
@@ -114,19 +102,23 @@ export default function (Categories) {
         }
         // moves cid to index order - 1 in the array
         if (childrenCids.length > 1) {
-            childrenCids.splice(Math.max(0, order - 1), 0, childrenCids.splice(currentIndex, 1)[0]);
+            childrenCids.splice(Math.max(0, Number(order) - 1), 0, childrenCids.splice(currentIndex, 1)[0]);
         }
 
         // recalculate orders from array indices
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         await db.sortedSetAdd(
             `cid:${parentCid}:children`,
             childrenCids.map((cid, index) => index + 1),
             childrenCids
-        );
+        ) as void;
 
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         await db.setObjectBulk(
             childrenCids.map((cid, index) => [`category:${cid}`, { order: index + 1 }])
-        );
+        ) as void;
 
         cache.del([
             'categories:cid',
@@ -135,15 +127,67 @@ export default function (Categories) {
         ]);
     }
 
-    async function parseDescription(cid: string, description: string) {
-        const parsedDescription: string = await plugins.hooks.fire('filter:parse.raw', description);
-        await Categories.setCategoryField(cid, 'descriptionParsed', parsedDescription);
-    };
-
     async function updateName(cid: string, newName: string) {
         const oldName: string = await Categories.getCategoryField(cid, 'name');
-        await db.sortedSetRemove('categories:name', `${oldName.slice(0, 200).toLowerCase()}:${cid}`);
-        await db.sortedSetAdd('categories:name', 0, `${newName.slice(0, 200).toLowerCase()}:${cid}`);
-        await db.setObjectField(`category:${cid}`, 'name', newName);
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await db.sortedSetRemove('categories:name', `${oldName.slice(0, 200).toLowerCase()}:${cid}`) as void;
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await db.sortedSetAdd('categories:name', 0, `${newName.slice(0, 200).toLowerCase()}:${cid}`) as void;
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await db.setObjectField(`category:${cid}`, 'name', newName) as void;
     }
+
+    async function updateCategoryField(cid: string, key: string, value: string) {
+        if (key === 'parentCid') {
+            return await updateParent(cid, value);
+        } else if (key === 'tagWhitelist') {
+            return await updateTagWhitelist(cid, value);
+        } else if (key === 'name') {
+            return await updateName(cid, value);
+        } else if (key === 'order') {
+            return await updateOrder(cid, value);
+        }
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        await db.setObjectField(`category:${cid}`, key, value) as void;
+        if (key === 'description') {
+            await Categories.parseDescription(cid, value);
+        }
+    }
+
+    async function updateCategory(cid: string, modifiedFields: ModifiedField) {
+        const exists: boolean = await Categories.exists(cid);
+        if (!exists) {
+            return;
+        }
+
+        if (modifiedFields.hasOwnProperty('name')) {
+            const translated: string | void | number = await translator.translate(modifiedFields.name);
+            modifiedFields.slug = `${cid}/${slugify(translated) as string}`;
+        }
+        const result: {cid: string, category: {[key: string]: string}} = await plugins.hooks.fire('filter:category.update', { cid: cid, category: modifiedFields }) as {cid: string, category: {[key: string]: string}};
+
+        const { category } = result;
+        const fields: string[] = Object.keys(category);
+        // move parent to front, so its updated first
+        const parentCidIndex: number = fields.indexOf('parentCid');
+        if (parentCidIndex !== -1 && fields.length > 1) {
+            fields.splice(0, 0, fields.splice(parentCidIndex, 1)[0]);
+        }
+
+        for (const key of fields) {
+            // eslint-disable-next-line no-await-in-loop
+            await updateCategoryField(cid, key, category[key]);
+        }
+        plugins.hooks.fire('action:category.update', { cid: cid, modified: category }) as void;
+    }
+
+    Categories.update = async function (modified: {[key: string]: ModifiedField}) {
+        const cids: string[] = Object.keys(modified);
+        await Promise.all(cids.map(cid => updateCategory(cid, modified[cid])));
+        return cids;
+    };
 }

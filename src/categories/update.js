@@ -8,6 +8,13 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __asyncValues = (this && this.__asyncValues) || function (o) {
+    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+    var m = o[Symbol.asyncIterator], i;
+    return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+    function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -19,12 +26,6 @@ const translator_1 = __importDefault(require("../translator"));
 const plugins_1 = __importDefault(require("../plugins"));
 const cache_1 = __importDefault(require("../cache"));
 module.exports = function (Categories) {
-    Categories.parseDescription = function (cid, description) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const parsedDescription = yield plugins_1.default.hooks.fire('filter:parse.raw', description);
-            yield Categories.setCategoryField(cid, 'descriptionParsed', parsedDescription);
-        });
-    };
     function updateParent(cid, newParent) {
         return __awaiter(this, void 0, void 0, function* () {
             const parent = parseInt(newParent, 10) || 0;
@@ -74,6 +75,20 @@ module.exports = function (Categories) {
             cache_1.default.del(`cid:${cid}:tag:whitelist`);
         });
     }
+    function updateName(cid, newName) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const oldName = yield Categories.getCategoryField(cid, 'name');
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            yield database_1.default.sortedSetRemove('categories:name', `${oldName.slice(0, 200).toLowerCase()}:${cid}`);
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            yield database_1.default.sortedSetAdd('categories:name', 0, `${newName.slice(0, 200).toLowerCase()}:${cid}`);
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            yield database_1.default.setObjectField(`category:${cid}`, 'name', newName);
+        });
+    }
     function updateOrder(cid, order) {
         return __awaiter(this, void 0, void 0, function* () {
             const parentCid = yield Categories.getCategoryField(cid, 'parentCid');
@@ -83,7 +98,7 @@ module.exports = function (Categories) {
             // The next line calls a function in a module that has not been updated to TS yet
             // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
             const childrenCids = yield database_1.default.getSortedSetRange(`cid:${parentCid}:children`, 0, -1);
-            const currentIndex = childrenCids.indexOf(Number(cid));
+            const currentIndex = childrenCids.indexOf(cid);
             if (currentIndex === -1) {
                 throw new Error('[[error:no-category]]');
             }
@@ -103,20 +118,6 @@ module.exports = function (Categories) {
                 `cid:${parentCid}:children`,
                 `cid:${parentCid}:children:all`,
             ]);
-        });
-    }
-    function updateName(cid, newName) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const oldName = yield Categories.getCategoryField(cid, 'name');
-            // The next line calls a function in a module that has not been updated to TS yet
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-            yield database_1.default.sortedSetRemove('categories:name', `${oldName.slice(0, 200).toLowerCase()}:${cid}`);
-            // The next line calls a function in a module that has not been updated to TS yet
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-            yield database_1.default.sortedSetAdd('categories:name', 0, `${newName.slice(0, 200).toLowerCase()}:${cid}`);
-            // The next line calls a function in a module that has not been updated to TS yet
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-            yield database_1.default.setObjectField(`category:${cid}`, 'name', newName);
         });
     }
     function updateCategoryField(cid, key, value) {
@@ -142,6 +143,7 @@ module.exports = function (Categories) {
         });
     }
     function updateCategory(cid, modifiedFields) {
+        var _a, e_1, _b, _c;
         return __awaiter(this, void 0, void 0, function* () {
             const exists = yield Categories.exists(cid);
             if (!exists) {
@@ -159,13 +161,36 @@ module.exports = function (Categories) {
             if (parentCidIndex !== -1 && fields.length > 1) {
                 fields.splice(0, 0, fields.splice(parentCidIndex, 1)[0]);
             }
-            for (const key of fields) {
-                // eslint-disable-next-line no-await-in-loop
-                yield updateCategoryField(cid, key, category[key]);
+            try {
+                for (var _d = true, fields_1 = __asyncValues(fields), fields_1_1; fields_1_1 = yield fields_1.next(), _a = fields_1_1.done, !_a;) {
+                    _c = fields_1_1.value;
+                    _d = false;
+                    try {
+                        const key = _c;
+                        // eslint-disable-next-line no-await-in-loop
+                        yield updateCategoryField(cid, key, category[key]);
+                    }
+                    finally {
+                        _d = true;
+                    }
+                }
+            }
+            catch (e_1_1) { e_1 = { error: e_1_1 }; }
+            finally {
+                try {
+                    if (!_d && !_a && (_b = fields_1.return)) yield _b.call(fields_1);
+                }
+                finally { if (e_1) throw e_1.error; }
             }
             plugins_1.default.hooks.fire('action:category.update', { cid: cid, modified: category });
         });
     }
+    Categories.parseDescription = function (cid, description) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const parsedDescription = yield plugins_1.default.hooks.fire('filter:parse.raw', description);
+            yield Categories.setCategoryField(cid, 'descriptionParsed', parsedDescription);
+        });
+    };
     Categories.update = function (modified) {
         return __awaiter(this, void 0, void 0, function* () {
             const cids = Object.keys(modified);
